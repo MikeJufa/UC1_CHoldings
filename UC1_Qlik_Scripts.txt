@@ -129,3 +129,117 @@ IF $(vCoferQVDDate) = $(vCoferQVDEndOfMonth) THEN
     DROP TABLE FirstStep, FameData;
 
 END IF
+
+SET HidePrefix = '_';
+SET vScaleNumber = Dual(Num($1/1E9,'$#,##0.00 B'),$1);
+
+LET vToday = Num(Today());
+LET vYesterday = Num(Today())-1;
+LET vDateFormat = 'D MMM YYYY';
+LET vYrMthFormat = 'MMM-YYYY';
+LET vYrMthNumFormat = 'YYYYMM';
+
+//Maturity Dates Ranges
+Ranges:
+LOAD
+      Range
+    , Date(Evaluate(RangeStart)) as RangeStart
+    , Date(Evaluate(RangeEnd)) as RangeEnd
+;
+Load * Inline
+    [
+    Range; RangeStart; RangeEnd
+    Expired; 2; DayEnd(vToday)
+    This Week; WeekStart(vToday); WeekEnd(vToday)
+    Last Week; WeekStart(vToday,-1); WeekEnd(vToday,-1)
+    Next Week; WeekStart(vToday,1); WeekEnd(vToday,1)
+    This Month; MonthStart(vToday); MonthEnd(vToday)
+    Last Month; MonthStart(vToday,-1); MonthEnd(vToday,-1)
+    This Year; YearStart(vToday); YearEnd(vToday)
+    Last Year; YearStart(vToday,-1); YearEnd(vToday,-1)
+    ] (delimiter is ';')
+    ;
+
+Join(Ranges)
+
+IntervalMatch([Maturity Date])
+
+Load RangeStart, RangeEnd Resident Ranges;
+
+Drop Field RangeStart, RangeEnd;
+
+//Retrieve exchange rate data from DW, but only workdays available;
+Temp_Table_Rate:
+LOAD
+      Date(Floor(RUN_DATE_ID),'YYYY.MM.DD') as [RunDate]
+    , RATE
+;
+SQL
+SELECT RUN_DATE_ID, result as RATE
+FROM FINDDW.USER_GEN_FX_RESULT_FACT
+WHERE CURRENCY_SKEY=6
+;
+
+MinMaxDate:
+LOAD
+      Min([RunDate]) as MinDate
+    , Max([RunDate]) as MaxDate
+Resident Temp_Table_Rate
+;
+
+LET vMinDate = Peek('MinDate',-1,'MinMaxDate')-1;
+LET vMaxDate = Peek('MaxDate',-1,'MinMaxDate')
+
+Drop Table MinMaxDate;
+
+Join(Temp_Table_Rate)
+
+Load Date(RecNo()+$(vMinDate)) as [RunDate]
+Autogenerate vMaxDate - vMinDate
+;
+
+//Fulfill the missing data with the previous business day
+Temp_Rates:
+NoConcatenate
+LOAD
+    Date(Num([RunDate]),'YYYY.MM.DD') as D2
+    , If(IsNull(RATE),Peek(RATE),RATE) as RATE
+Resident Temp_Table_Rate
+Order by [RunDate]
+;
+
+DROP TABLE Temp_Table_Rate;
+
+Join(Temp_Rates)
+
+LOAD
+    Date(QuarterEnd(Date#([INDEX],'YYYY-MM-DD')),'YYYY.MM.DD') as D2
+    , C010FRAC@IFS
+;
+LOAD
+    "INDEX"
+    , C010FRAC@IFS
+FROM [COFER.qvd](qvd)
+;
+
+NoConcatenate
+
+//associated with Main table with [COFER Report Date];
+COFER:
+Load
+    RATE
+    , [_COFER Report Date Num]
+    , [Allocated Reservers in USD]
+    , Dual('Q'&Ceil(Month([COFER Report Date])/3)&' - '&Year([COFER Report Date]),Num([COFER Report Date])) as [COFER Quarter_Year]
+    , [Allocated Reservers in USD]*[RATE] as [Allocated Reservers in CAD]
+;
+Load
+    If(isNull(RATE),Peek(RATE),RATE) as RATE
+    , Num(Floor(D2)) as [_COFER Report Date Num]
+    , D2 as [COFER Report Date]
+    , C010FRAC@IFS*Evaluate('1E6') as [Allocated Reservers in USD]
+Resident Temp_Rates
+Order by D2
+;
+
+Drop table Temp_Rates;
