@@ -1,0 +1,82 @@
+Directory lib://FBD_STAGE/;
+
+SET vMainQVDName = 'Holdings';
+SET vMakeDate = MakeDate(2014,3,31);
+
+Map_RRB:
+Mapping Load * Inline
+[
+ISIN, RRB
+CA135087VS05, 1
+CA135087WV25, 1
+CA135087XQ21, 1
+CA135087YK42, 1
+CA135087ZH04, 1
+CA135087B949, 1
+CA135087G997, 1
+CA135087UL60, 1
+]
+;
+
+Holdings:
+LOAD *
+Where Num(SETTLE_DATE_ID) <= $(vMakeDate)+0.99999
+And Num(MATURITY_DATE_ID) > $(vMakeDate)
+;
+Load
+    *
+    , IF(Wildmatch(ISIN,'CA135087*'),1,0) as [Goc_Bonds_Flag]
+    , Date($(vMakeDate),'YYYY.MM.DD') as [data_date]
+    ;
+SQL
+SELECT *
+FROM ...
+;
+
+STORE Incremental INTO [$(vMainQVDName).qvd](qvd);
+
+
+//First step to retrieve teh web service dynamic ticket number;
+[FirstStep]:
+LOAD td
+FROM [lib://FrameConnectionFirstStep]
+(XmlSimple, table is [html/table/tr])
+;
+
+LET vTicket = Peek('td',-1,'FirstStep');
+
+SUB GetFameData(_field)
+    FameData:
+    LOAD *
+    FROM [lib://FameConnection]
+    (URL is [http://laoraapp5.boc.ca:7008/DacsAccessPoint/accessPoint?app=getfamedata&ticket=$(vTicket)&cmd=get_object=famemart'$(_field)@IFS&outformat=CSV]
+    , txt, codepage is 28591, embedded lables, delimiter is ',', msq)
+    ;
+END SUB
+
+
+SUB GetFameOtherData(_field)
+    Join(FameData)
+    [$(_field)]:
+    LOAD *
+    FROM [lib://FameConnection]
+    (URL is [http://laoraapp5.boc.ca:7008/DacsAccessPoint/accessPoint?app=getfamedata&ticket=$(vTicket)&cmd=get_object=famemart'$(_field)@IFS&outformat=CSV]
+    , txt, codepage is 28591, embedded lables, delimiter is ',', msq)
+    ;
+END SUB
+
+CALL GetFameData('C010FRA')
+CALL GetFameOtherData('C010FRAC')
+CALL GetFameOtherData('C010FRU')
+CALL GetFameOtherData('C010FRAD')
+CALL GetFameOtherData('C010FRAY')
+CALL GetFameOtherData('C010FRAP')
+CALL GetFameOtherData('C010FRAE')
+CALL GetFameOtherData('C010FRAR')
+CALL GetFameOtherData('C010FRAW')
+CALL GetFameOtherData('C010FRAA')
+CALL GetFameOtherData('C010FRAO')
+
+STORE FameData INTO [COFER.qvd](qvd);
+
+DROP TABLE FirstStep, FameData;

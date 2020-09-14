@@ -1,0 +1,49 @@
+Directory lib://FBD_STAGE/;
+
+SET vMainQVDName = 'Holdings';
+SET vMakeDate = MakeDate(2014,3,31);
+
+Map_RRB:
+Mapping Load * Inline
+[
+ISIN, RRB
+CA135087VS05, 1
+CA135087WV25, 1
+CA135087XQ21, 1
+CA135087YK42, 1
+CA135087ZH04, 1
+CA135087B949, 1
+CA135087G997, 1
+CA135087UL60, 1
+]
+;
+
+FOR vMakeDate = num(MakeDate(2014,4,1)) to num(Today())-1
+    Incremental:
+    Load
+          *
+        , IF(Num(MATURITY_DATE - START_DATE) >= 18000 AND Goc_Bonds_Flag = 1, Dual('50Y',50)
+          , IF(RRB_Flag = 1, Dual('30Y (RRB)', 32)
+          , IF(Num(MATURITY_DATE - START_DATE) >= 10500 AND Goc_Bonds_Flag = 1, Dual('30Y',30)
+          , Null())) as [Term]
+    Where Num(SETTLE_DATE_ID) <= $(vMakeDate)+0.99999
+    And Num(MATURITY_DATE_ID) > $(vMakeDate)
+    ;
+    Load
+        *
+        , IF(Wildmatch(ISIN,'CA135087*'),1,0) as [Goc_Bonds_Flag]
+        , Date($(vMakeDate),'YYYY.MM.DD') as [data_date]
+        ;
+    SQL
+    SELECT *
+    FROM ...
+    ;
+
+    Concatenate
+    Load * FROM [$(vMainQVDName).qvd](qvd);
+
+    STORE Incremental INTO [$(vMainQVDName).qvd](qvd);
+
+    DROP TABLE Incremental;
+
+NEXT
