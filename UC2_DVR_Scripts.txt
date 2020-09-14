@@ -1,0 +1,41 @@
+SET Version = '0.9.18';
+
+//Retrieving the Previous Business Date from DW.
+LET  vToday = Num(Today());
+LET  vMinDate = Num(MakeDate(2020,1,1));
+
+//Temporary table to store the business dates.
+[Temp_DATE_DIM]:
+LOAD
+      Date(Floor(DATE_ID),'YYYY.MM.DD') as Dim_Date
+    , BUSINESS_DAY_EN_IC as _BUSINESS_DAY_EN_IC
+WHERE Num(DATE_ID) <= $(vToday)
+AND Num(DATE_ID) >= $(vMinDate)
+;
+SQL
+SELECT
+      "DATE_ID"
+    , "BUSINESS_DAY_EN_IC"
+FROM "SEM_COMMON"."DATE_DIM"
+WHERE "BUSINESS_DAY_EN_IC" = 'Yes'
+ORDER BY "DATE_ID" DESC
+;
+
+LET vCurrentBizDateYYYYMMDD = Peek('Dim_Date',0,'Temp_DATE_DIM');
+LET vPreviousBizDateYYYYMMDD = Peek('Dim_Date',1,'Temp_DATE_DIM');
+
+DROP TABLE [Temp_DATE_DIM];
+
+//Mapping Table.
+[Map_SWIFT_Message_Type]:
+Mapping Load *;
+SQL
+SELECT
+      "SWIFT_MESSAGE_TYPE_SKEY"
+    , "SWIFT_GEN_MESSAGE_TYPE"
+FROM "SEM_COMMON"."SWIFT_MESSAGE_TYPE_DIM"
+;
+
+TRACE;
+TRACE Loading Inbound Data from SWIFT_HABS_RECON_RESULTS_FACT;
+TRACE =======================================================;
