@@ -39,3 +39,84 @@ FROM "SEM_COMMON"."SWIFT_MESSAGE_TYPE_DIM"
 TRACE;
 TRACE Loading Inbound Data from SWIFT_HABS_RECON_RESULTS_FACT;
 TRACE =======================================================;
+
+[Map_Inbound_CLOB_TS]:
+Mapping LOAD
+    Floor(TRANS_UTC_DATE_ID)&'|'&SWIFT_TRANSACTION_NUMBER as Inbound_CLOB_TS_Mapping_Key
+    , APPLICATION_UPDATE_TS
+;
+SQL
+SELECT
+    "TRANS_UTC_DATE_ID"
+    , "SWIFT_TRANSACTION_NUMBER"
+    ...
+FROM ...
+;
+
+[Temp_Inbound_Table]:
+LOAD *
+;
+SQL
+SELECT *
+FROM
+    "SEM_COMMON"."SWIFT_HABS_RECON_RESULTS_FACT" a
+    , (
+      SELECT
+          RECON_DATE_ID
+          , RECON_OUTGOING_MESSAGE_ID
+          , MAX(RECON_WORKFLOW_EXECUTION_SKEY) as Max_Skey
+      FROM
+          SEM.COMMON.SWIFT_HABS_RECON_RESULTS_FACT
+      GROUP BY
+          RECON_DATE_ID
+          , RECON_OUTGOING_MESSAGE_IND
+      HAVING
+         RECON_OUTGOING_MESSAGE_IND=0
+      ) Max_Skey_Data
+WHERE
+    a.RECON_OUTGOING_MESSAGE_IND = 0
+    AND a.RECON_DATE_ID = Max_Skey_Data.RECON_DATE_ID
+    AND a.RECON_WORKFLOW_EXECUTION_SKEY = Max_Skey_Data.Max_Skey
+;
+
+[Temp_Inbound_Date_Table]:
+LOAD
+    Date(Num(RECON_DATE_ID),'YYYY.MM.DD') as [RECON_DATE_ID_IN]
+;
+SQL
+SELECT DISTINCT
+    "RECON_DATE_ID"
+FROM SEM_COMMON.SWIFT_HABS_RECON_RESULTS_FACT
+WHERE RECON_OUTGOING_MESSAGE_IND = 0
+;
+
+FOR EACH i IN FieldValueList('RECON_DATE_ID_IN')
+    [Inbound_Table]:
+    Load * Inline
+    [
+    "Inbound.Recon_Date"
+    $(i)
+    ]
+    ;
+NEXT
+
+OUTER JOIN ([Inbound_Table])
+
+MT_HABS:
+LOAD
+      SWIFT_GEN_MESSAGE_TYPE as [Inbound.SWIFT_Message_Type]
+    , SWIFT_GEN_MESSAGE_TYPE as [Inbound.CLOB_SWIFT_Message_Type]
+    , SWIFT_GEN_MESSAGE_TYPE as [Inbound.DB_SWIFT_Message_Type]
+;
+SQL
+SELECT
+    "SWIFT_GEN_MESSAGE_TYPE"
+FROM SEM_COMMON.SWIFT_MESSAGE_TYPE_DIM
+WHERE SWIFT_MESSAGE_TYPE_SKEY <>-1
+;
+
+OUTER JOIN([Inbound_Table])
+
+Load * Resident [Temp_Inbound_Table];
+
+DROP TABLE [Temp_Inbound_Date_Table], [Temp_Inbound_Table];
