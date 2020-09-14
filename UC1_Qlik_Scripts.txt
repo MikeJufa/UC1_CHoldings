@@ -48,9 +48,84 @@ FOR vMakeDate = vDataDateMax+1 TO Num(Today())
 
     Incremental:
     Load
+          *
+        , IF(Num(MATURITY_DATE - START_DATE) >= 18000 AND Goc_Bonds_Flag = 1, Dual('50Y',50)
+          , IF(RRB_Flag = 1, Dual('30Y (RRB)', 32)
+          , IF(Num(MATURITY_DATE - START_DATE) >= 10500 AND Goc_Bonds_Flag = 1, Dual('30Y',30)
+          , Null())) as [Term]
+    Where Num(SETTLE_DATE_ID) <= $(vMakeDate)+0.99999
+    And Num(MATURITY_DATE_ID) > $(vMakeDate)
+    ;
+    Load
         *
-        
+        , IF(Wildmatch(ISIN,'CA135087*'),1,0) as [Goc_Bonds_Flag]
+        , Date($(vMakeDate),'YYYY.MM.DD') as [data_date]
+        ;
+    SQL
+    SELECT *
+    FROM ...
+    ;
+
+    Concatenate
+    Load * FROM [$(vMainQVDName).qvd](qvd);
+
+    STORE Incremental INTO [$(vMainQVDName).qvd](qvd);
+
+    DROP TABLE Incremental;
 
 NEXT
+
+END IF
+
+//Generate COFER QVD from Frame Data;
+LET vCoferQVDDate = Today();
+LET vCoferQVDEndOfMonth = MonthEnd(Today());
+
+IF $(vCoferQVDDate) = $(vCoferQVDEndOfMonth) THEN
+
+    //First step to retrieve teh web service dynamic ticket number;
+    [FirstStep]:
+    LOAD td
+    FROM [lib://FrameConnectionFirstStep]
+    (XmlSimple, table is [html/table/tr])
+    ;
+
+    LET vTicket = Peek('td',-1,'FirstStep');
+
+    SUB GetFameData(_field)
+        FameData:
+        LOAD *
+        FROM [lib://FameConnection]
+        (URL is [http://laoraapp5.boc.ca:7008/DacsAccessPoint/accessPoint?app=getfamedata&ticket=$(vTicket)&cmd=get_object=famemart'$(_field)@IFS&outformat=CSV]
+        , txt, codepage is 28591, embedded lables, delimiter is ',', msq)
+        ;
+    END SUB
+
+
+    SUB GetFameOtherData(_field)
+        Join(FameData)
+        [$(_field)]:
+        LOAD *
+        FROM [lib://FameConnection]
+        (URL is [http://laoraapp5.boc.ca:7008/DacsAccessPoint/accessPoint?app=getfamedata&ticket=$(vTicket)&cmd=get_object=famemart'$(_field)@IFS&outformat=CSV]
+        , txt, codepage is 28591, embedded lables, delimiter is ',', msq)
+        ;
+    END SUB
+
+    CALL GetFameData('C010FRA')
+    CALL GetFameOtherData('C010FRAC')
+    CALL GetFameOtherData('C010FRU')
+    CALL GetFameOtherData('C010FRAD')
+    CALL GetFameOtherData('C010FRAY')
+    CALL GetFameOtherData('C010FRAP')
+    CALL GetFameOtherData('C010FRAE')
+    CALL GetFameOtherData('C010FRAR')
+    CALL GetFameOtherData('C010FRAW')
+    CALL GetFameOtherData('C010FRAA')
+    CALL GetFameOtherData('C010FRAO')
+
+    STORE FameData INTO [COFER.qvd](qvd);
+
+    DROP TABLE FirstStep, FameData;
 
 END IF
