@@ -1,0 +1,56 @@
+SET Version = '1.3';
+
+Directory lib://FBD_STAGE/;
+
+SET vMainQVDName = 'Holdings';
+SET vReportDateFormat = 'MMM-D-YYYY';
+SET vReportMonthFormat = 'MMM-YY';
+
+//Error handling for preventing duplicated data;
+TempMain:
+Load * FROM [$(vMainQVDName).qvd](qvd);
+
+TempDataDateMax:
+Load
+      Max(DataDateField) as DataDateMax
+    , Date(Max(DataDateField), 'D MMM YYYY') as DataDateMaxDMMMYYYY
+;
+Load FieldValue('data_date', RecNo()) as DataDateField
+Autogenerate FieldValueCount('data_date')
+;
+
+LET vDataDateMax = Peek('DataDateMax',-1,'TempDataDateMax');
+
+DROP TABLE TempMain, TempDataDateMax;
+
+IF vDataDateMax < Num(Today()) THEN
+
+//Incremental adding new data to QVD daily
+
+//List of RRB (Real Return Bonds) associated with ISIN
+Map_RRB:
+Mapping Load * Inline
+[
+ISIN, RRB
+CA135087VS05, 1
+CA135087WV25, 1
+CA135087XQ21, 1
+CA135087YK42, 1
+CA135087ZH04, 1
+CA135087B949, 1
+CA135087G997, 1
+CA135087UL60, 1
+]
+;
+
+//Using Today as filter condition
+FOR vMakeDate = vDataDateMax+1 TO Num(Today())
+
+    Incremental:
+    Load
+        *
+        
+
+NEXT
+
+END IF
