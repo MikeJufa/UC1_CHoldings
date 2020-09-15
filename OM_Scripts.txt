@@ -53,3 +53,18 @@ LET vLast28Days = Num(Timestamp(Now(1)-28));
 LET vLast30Days = Num(Timestamp(Now(1)-30));
 LET vLast60Days = Num(Timestamp(Now(1)-60));
 LET vLast90Days = Num(Timestamp(Now(1)-90));
+
+
+//Export Dataset from QVF
+Binary [lib://QlikShar(bocad_zhuf)/Apps/94e8246d-4355-4b25-8b4f-ad4733d97fa4];
+
+Directory [lib://AttachedFiles/];
+
+LET vNumTables = NoOfTables();
+
+FOR i = 0 to NoOfTables()-1
+    LET vTable = TableName(i);
+    TRACE '$(vTable)';
+    STORE [$(vTable)] INTO [$(vTable).qvd](qvd);
+NEXT
+//Export Dataset from QVF
