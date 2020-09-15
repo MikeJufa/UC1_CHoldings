@@ -1,0 +1,51 @@
+SET Version = '0.8';
+SET Status_Success = 1;
+
+Directory [lib://AttachedFiles/];
+
+LIB CONNECT TO 'CONTROL_DW';
+
+//Table retrieving all Workflow_Execution_Skey.
+[LatestWorkflowExeSkey]:
+FIRST 1 LOAD WORKFLOW_EXECUTION_SKEY;
+SQL
+SELECT
+      WF."WORKFLOW_EXECUTION_SKEY"
+FROM
+      "SEM_CONTROL"."WORKFLOW_EXECUTION_FACT" WF
+    , "SEM_CONTROL"."WORKFLOW_DIM" WD
+WHERE
+        WF.WORKFLOW_SKEY = WD.WORKFLOW_SKEY
+    AND WF.WORKFLOW_EXECUTION_STATUS_SKEY = $(Status_Success)
+    AND WD.WORKFLOW_BID = 'DVRRECON'
+ORDER BY
+    WORKFLOW_EXECUTION_SKEY DESC
+;
+
+LET vLatestWorkflowExeSkey = Peek('WORKFLOW_EXECUTION_SKEY',0,'LatestWorkflowExeSkey');
+
+NoConcatenate
+
+//Table retrieving last processed Workflow_Execution_Skey.
+[PreviousWorkflowExeSkey]:
+LOAD WORKFLOW_EXECUTION_SKEY
+FROM PreviousWorkflowExeSkey.csv
+(txt, utf8, embedded labels, delimiter is '\t', msq)
+;
+
+LET vPreviousWorkflowExeSkey = Peek('WORKFLOW_EXECUTION_SKEY',0,'PreviousWorkflowExeSkey');
+
+//Compare two values, then decide what is next process.
+IF $(vLatestWorkflowExeSkey) > $(vPreviousWorkflowExeSkey) THEN
+    //Refresh successfully, will trigger next step.
+    //Override New Skey to replace Previous Workflow_Execution_Skey.
+    STORE [LatestWorkflowExeSkey] INTO PreviousWorkflowExeSkey.csv(txt);
+    EXIT SCRIPT;
+    ELSE
+    //Intentional refresh failure, will end process.
+    TRACE ==================;
+    TRACE This is an Intentional Failure when polling of no new data in WORKFLOW_EXECUTION_FACT;
+    TRACE ==================;
+    LOAD * RESIDENT NoSuchTable;
+END IF
+;
