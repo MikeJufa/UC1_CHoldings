@@ -68,3 +68,26 @@ FOR i = 0 to NoOfTables()-1
     STORE [$(vTable)] INTO [$(vTable).qvd](qvd);
 NEXT
 //Export Dataset from QVF
+
+
+SUB verify_database
+
+    TRACE Verifying logging database;
+
+    REM Verfiy existence of database log data except where db_v_file_override set to 1;
+
+    IF db_v_file_override = 1 THEN
+        TRACE File as log source has been manually chosen.  Script will not check for presence of logging database. Carry on;
+        SET db_v_file =  1;
+        LET baseTableName = '$(baseTableName)_file';  //Store log history QVD with surffix _file so it only gets used with file logging.
+        LET LastReloadCompare = If(LastReloadSource = 1, lastReloadCompare, cutoffDate);  //If last reload loaded from db and now from file.
+                                                                                          //we want to start over and pull data from cutoffDate
+        TRACE Last Reload Compare time = $(lastReloadCompare).  CutoffDate = $(cutoffDate)
+        EXIT SUB;
+
+    ELSE  //All other cases (including default) - will verify database existence.
+
+        LET db_check_time = timestamp(now(1)-0.01);  //equialent to about 15 minutes.
+        SET errormode = 0;  //suppress reload failure in case no database.
+
+END SUB
